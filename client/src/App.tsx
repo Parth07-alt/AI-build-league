@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import LandingPage from './pages/LandingPage';
 import JoinPage from './pages/JoinPage';
+import LoginPage from './pages/LoginPage';
 import StudentDashboard from './pages/StudentDashboard';
 import LeaderboardPage from './pages/LeaderboardPage';
 import ClubDashboard from './pages/ClubDashboard';
@@ -13,6 +14,7 @@ import AdminExperiments from './pages/admin/AdminExperiments';
 import AdminBudget from './pages/admin/AdminBudget';
 import AdminCampuses from './pages/admin/AdminCampuses';
 import AdminClubs from './pages/admin/AdminClubs';
+import AdminStudents from './pages/admin/AdminStudents';
 import { Toaster } from './components/ui/Toaster';
 
 function App() {
@@ -22,6 +24,7 @@ function App() {
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/join" element={<JoinPage />} />
+        <Route path="/login" element={<LoginPage />} />
         <Route path="/dashboard/:id" element={<StudentDashboard />} />
         <Route path="/leaderboard" element={<LeaderboardPage />} />
         <Route path="/club" element={<ClubDashboard />} />
@@ -32,6 +35,7 @@ function App() {
           <Route path="funnel" element={<AdminFunnel />} />
           <Route path="campuses" element={<AdminCampuses />} />
           <Route path="clubs" element={<AdminClubs />} />
+          <Route path="students" element={<AdminStudents />} />
           <Route path="experiments" element={<AdminExperiments />} />
           <Route path="budget" element={<AdminBudget />} />
         </Route>

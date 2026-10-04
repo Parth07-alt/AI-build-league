@@ -31,6 +31,9 @@ export default function Navbar({ transparent }: NavbarProps) {
           </div>
 
           <div className="flex items-center gap-2">
+            <Link to="/login" className="btn-ghost text-sm hidden sm:inline-flex">
+              Login
+            </Link>
             <Link to="/join" className="btn-primary text-sm py-2 px-4">
               Join League
             </Link>

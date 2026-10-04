@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   BarChart3, Target, Building, Users, FlaskConical, DollarSign,
-  TrendingUp, Rocket, Menu, X, ChevronDown
+  TrendingUp, Rocket, Menu, X, ChevronDown, List
 } from 'lucide-react';
 
 const NAV_ITEMS = [
@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { path: '/admin/funnel', icon: TrendingUp, label: 'Funnel' },
   { path: '/admin/campuses', icon: Building, label: 'Campuses' },
   { path: '/admin/clubs', icon: Users, label: 'Clubs' },
+  { path: '/admin/students', icon: List, label: 'Participants' },
   { path: '/admin/experiments', icon: FlaskConical, label: 'Experiments' },
   { path: '/admin/budget', icon: DollarSign, label: 'Budget' },
 ];

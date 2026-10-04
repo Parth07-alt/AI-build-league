@@ -7,6 +7,7 @@ const api = axios.create({
 });
 
 // Students
+export const getAllStudents = () => api.get('/students');
 export const registerStudent = (data: any) => api.post('/students/register', data);
 export const getStudent = (id: string) => api.get(`/students/${id}`);
 export const getStudentByEmail = (email: string) => api.get(`/students/by-email/${encodeURIComponent(email)}`);

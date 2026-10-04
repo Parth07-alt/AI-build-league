@@ -9,6 +9,23 @@ function generateReferralCode(name) {
   return `${namePart}-${randomPart}`;
 }
 
+// GET /api/students
+router.get('/', (req, res) => {
+  const students = db.prepare(`
+    SELECT s.id, s.name, s.email, s.branch, s.referral_code, s.source, s.created_at,
+           c.name as college_name, cl.name as club_name, p.name as project_name,
+           r.status as registration_status, pp.completed as project_completed
+    FROM students s
+    LEFT JOIN colleges c ON s.college_id = c.id
+    LEFT JOIN clubs cl ON s.club_id = cl.id
+    LEFT JOIN projects p ON s.project_id = p.id
+    LEFT JOIN registrations r ON s.id = r.student_id
+    LEFT JOIN project_progress pp ON s.id = pp.student_id
+    ORDER BY s.created_at DESC
+  `).all();
+  res.json(students);
+});
+
 // POST /api/students/register
 router.post('/register', (req, res) => {
   const { name, email, branch, graduation_year, college_id, club_id, project_id, squad_id, referred_by, source, medium, campaign } = req.body;
@@ -87,6 +104,13 @@ router.post('/register', (req, res) => {
   res.status(201).json({ success: true, student, referral_code: referralCode });
 });
 
+// GET /api/students/by-email/:email
+router.get('/by-email/:email', (req, res) => {
+  const student = db.prepare('SELECT id FROM students WHERE email = ?').get(req.params.email.toLowerCase());
+  if (!student) return res.status(404).json({ error: 'Student not found.' });
+  res.json({ id: student.id });
+});
+
 // GET /api/students/:id
 router.get('/:id', (req, res) => {
   const student = db.prepare(`
@@ -115,13 +139,6 @@ router.get('/:id', (req, res) => {
   const collegeRank = getCollegeRank(student.college_id);
 
   res.json({ ...student, referral_count: referralCount.count, vote_count: votes.count, college_rank: collegeRank });
-});
-
-// GET /api/students/by-email/:email
-router.get('/by-email/:email', (req, res) => {
-  const student = db.prepare('SELECT id FROM students WHERE email = ?').get(req.params.email.toLowerCase());
-  if (!student) return res.status(404).json({ error: 'Student not found.' });
-  res.json({ id: student.id });
 });
 
 // GET /api/students/:id/referral
