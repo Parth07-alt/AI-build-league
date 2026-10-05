@@ -56,10 +56,10 @@ export default function AdminStudents() {
           >
             <option value="">All Campuses</option>
             {Object.entries(collegeCounts)
-              .sort((a, b) => b[1] - a[1])
+              .sort((a, b) => (b[1] as number) - (a[1] as number))
               .map(([college, count]) => (
                 <option key={college} value={college}>
-                  {college} ({count})
+                  {college} ({count as number})
                 </option>
               ))}
           </select>
@@ -71,10 +71,10 @@ export default function AdminStudents() {
           >
             <option value="">All Clubs</option>
             {Object.entries(clubCounts)
-              .sort((a, b) => b[1] - a[1])
+              .sort((a, b) => (b[1] as number) - (a[1] as number))
               .map(([club, count]) => (
                 <option key={club} value={club}>
-                  {club} ({count})
+                  {club} ({count as number})
                 </option>
               ))}
           </select>
