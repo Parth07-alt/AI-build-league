@@ -1,43 +1,79 @@
 const express = require('express');
 const router = express.Router();
-const db = require('../db/database');
+const pool = require('../db/database');
 
 // GET /api/clubs?collegeId=
-router.get('/', (req, res) => {
-  const { collegeId } = req.query;
-  let clubs;
-  if (collegeId) {
-    clubs = db.prepare('SELECT cl.*, c.name as college_name FROM clubs cl JOIN colleges c ON cl.college_id = c.id WHERE cl.college_id = ? ORDER BY cl.name').all(collegeId);
-  } else {
-    clubs = db.prepare('SELECT cl.*, c.name as college_name FROM clubs cl JOIN colleges c ON cl.college_id = c.id ORDER BY c.name, cl.name').all();
+router.get('/', async (req, res) => {
+  try {
+    const { collegeId } = req.query;
+    let clubs;
+    if (collegeId) {
+      clubs = (await pool.query('SELECT cl.*, c.name as college_name FROM clubs cl JOIN colleges c ON cl.college_id = c.id WHERE cl.college_id = $1 ORDER BY cl.name', [collegeId])).rows;
+    } else {
+      clubs = (await pool.query('SELECT cl.*, c.name as college_name FROM clubs cl JOIN colleges c ON cl.college_id = c.id ORDER BY c.name, cl.name')).rows;
+    }
+    res.json(clubs);
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
   }
-  res.json(clubs);
 });
 
 // GET /api/clubs/:id
-router.get('/:id', (req, res) => {
-  const club = db.prepare('SELECT cl.*, c.name as college_name, c.city FROM clubs cl JOIN colleges c ON cl.college_id = c.id WHERE cl.id = ?').get(req.params.id);
-  if (!club) return res.status(404).json({ error: 'Club not found.' });
+router.get('/:id', async (req, res) => {
+  try {
+    const club = (await pool.query('SELECT cl.*, c.name as college_name, c.city FROM clubs cl JOIN colleges c ON cl.college_id = c.id WHERE cl.id = $1', [req.params.id])).rows[0];
+    if (!club) return res.status(404).json({ error: 'Club not found.' });
 
-  const stats = getClubStats(req.params.id);
+    const statsResult = await pool.query(`
+      SELECT
+        COUNT(DISTINCT s.id)::int as registrations,
+        COUNT(DISTINCT CASE WHEN a.attended = 1 THEN s.id END)::int as attendance,
+        COUNT(DISTINCT CASE WHEN pp.completed = 1 THEN s.id END)::int as projects_completed,
+        COUNT(DISTINCT sh.id)::int as shares,
+        COUNT(DISTINCT r.id)::int as referrals,
+        ROUND(
+          COUNT(DISTINCT s.id) * 0.30 +
+          COUNT(DISTINCT CASE WHEN a.attended = 1 THEN s.id END) * 0.25 +
+          COUNT(DISTINCT CASE WHEN pp.completed = 1 THEN s.id END) * 0.25 +
+          COUNT(DISTINCT sh.id) * 0.10 +
+          COUNT(DISTINCT r.id) * 0.10
+        )::int as growth_score
+      FROM students s
+      LEFT JOIN attendance a ON a.student_id = s.id
+      LEFT JOIN project_progress pp ON pp.student_id = s.id
+      LEFT JOIN shares sh ON sh.student_id = s.id
+      LEFT JOIN referrals r ON r.referrer_student_id = s.id
+      WHERE s.club_id = $1
+    `, [req.params.id]);
 
-  // Get rank
-  const allClubs = db.prepare('SELECT id FROM clubs').all();
-  const ranked = allClubs.map(c => ({ id: c.id, score: getClubStats(c.id).growth_score })).sort((a, b) => b.score - a.score);
-  const rank = ranked.findIndex(c => c.id === req.params.id) + 1;
+    const stats = statsResult.rows[0];
 
-  res.json({ ...club, ...stats, rank });
+    // Get rank
+    const allClubsStats = await pool.query(`
+      SELECT cl.id,
+        ROUND(
+          COUNT(DISTINCT s.id) * 0.30 +
+          COUNT(DISTINCT CASE WHEN a.attended = 1 THEN s.id END) * 0.25 +
+          COUNT(DISTINCT CASE WHEN pp.completed = 1 THEN s.id END) * 0.25 +
+          COUNT(DISTINCT sh.id) * 0.10 +
+          COUNT(DISTINCT r.id) * 0.10
+        )::int as score
+      FROM clubs cl
+      LEFT JOIN students s ON s.club_id = cl.id
+      LEFT JOIN attendance a ON a.student_id = s.id
+      LEFT JOIN project_progress pp ON pp.student_id = s.id
+      LEFT JOIN shares sh ON sh.student_id = s.id
+      LEFT JOIN referrals r ON r.referrer_student_id = s.id
+      GROUP BY cl.id
+      ORDER BY score DESC
+    `);
+    const rank = allClubsStats.rows.findIndex(c => c.id === req.params.id) + 1;
+
+    res.json({ ...club, ...stats, rank: rank || allClubsStats.rows.length });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
-
-function getClubStats(clubId) {
-  const regs = db.prepare('SELECT COUNT(*) as c FROM students WHERE club_id = ?').get(clubId).c;
-  const att = db.prepare('SELECT COUNT(*) as c FROM attendance a JOIN students s ON a.student_id = s.id WHERE s.club_id = ? AND a.attended = 1').get(clubId).c;
-  const comp = db.prepare('SELECT COUNT(*) as c FROM project_progress pp JOIN students s ON pp.student_id = s.id WHERE s.club_id = ? AND pp.completed = 1').get(clubId).c;
-  const shares = db.prepare('SELECT COUNT(*) as c FROM shares sh JOIN students s ON sh.student_id = s.id WHERE s.club_id = ?').get(clubId).c;
-  const referrals = db.prepare('SELECT COUNT(*) as c FROM referrals r JOIN students s ON r.referrer_student_id = s.id WHERE s.club_id = ?').get(clubId).c;
-
-  const score = Math.round(regs * 0.30 + att * 0.25 + comp * 0.25 + shares * 0.10 + referrals * 0.10);
-  return { registrations: regs, attendance: att, projects_completed: comp, shares, referrals, growth_score: score };
-}
 
 module.exports = router;

@@ -1,110 +1,133 @@
 const express = require('express');
 const router = express.Router();
-const db = require('../db/database');
+const pool = require('../db/database');
 
-function computeCollegeScore(collegeId) {
-  const regs = db.prepare('SELECT COUNT(*) as c FROM students WHERE college_id = ?').get(collegeId).c;
-  const att = db.prepare('SELECT COUNT(*) as c FROM attendance a JOIN students s ON a.student_id = s.id WHERE s.college_id = ? AND a.attended = 1').get(collegeId).c;
-  const comp = db.prepare('SELECT COUNT(*) as c FROM project_progress pp JOIN students s ON pp.student_id = s.id WHERE s.college_id = ? AND pp.completed = 1').get(collegeId).c;
-  const shares = db.prepare('SELECT COUNT(*) as c FROM shares sh JOIN students s ON sh.student_id = s.id WHERE s.college_id = ?').get(collegeId).c;
-  const referrals = db.prepare('SELECT COUNT(*) as c FROM referrals r JOIN students s ON r.referrer_student_id = s.id WHERE s.college_id = ?').get(collegeId).c;
-  return { regs, att, comp, shares, referrals, score: Math.round(regs * 0.30 + att * 0.25 + comp * 0.25 + shares * 0.10 + referrals * 0.10) };
-}
-
-function computeClubScore(clubId) {
-  const regs = db.prepare('SELECT COUNT(*) as c FROM students WHERE club_id = ?').get(clubId).c;
-  const att = db.prepare('SELECT COUNT(*) as c FROM attendance a JOIN students s ON a.student_id = s.id WHERE s.club_id = ? AND a.attended = 1').get(clubId).c;
-  const comp = db.prepare('SELECT COUNT(*) as c FROM project_progress pp JOIN students s ON pp.student_id = s.id WHERE s.club_id = ? AND pp.completed = 1').get(clubId).c;
-  const shares = db.prepare('SELECT COUNT(*) as c FROM shares sh JOIN students s ON sh.student_id = s.id WHERE s.club_id = ?').get(clubId).c;
-  const referrals = db.prepare('SELECT COUNT(*) as c FROM referrals r JOIN students s ON r.referrer_student_id = s.id WHERE s.club_id = ?').get(clubId).c;
-  return { regs, att, comp, shares, referrals, score: Math.round(regs * 0.30 + att * 0.25 + comp * 0.25 + shares * 0.10 + referrals * 0.10) };
-}
-
-// GET /api/leaderboard/colleges
-router.get('/colleges', (req, res) => {
-  const colleges = db.prepare('SELECT * FROM colleges').all();
-  const ranked = colleges.map(c => {
-    const s = computeCollegeScore(c.id);
-    return {
-      ...c,
-      registrations: s.regs,
-      attendance: s.att,
-      projects_completed: s.comp,
-      shares: s.shares,
-      referrals: s.referrals,
-      growth_score: s.score
-    };
-  }).sort((a, b) => b.growth_score - a.growth_score)
-    .map((c, i) => ({ ...c, rank: i + 1 }));
-
-  res.json(ranked);
+// GET /api/leaderboard/colleges - single optimized query
+router.get('/colleges', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        c.id, c.name, c.city, c.demo_flag,
+        COUNT(DISTINCT s.id)::int as registrations,
+        COUNT(DISTINCT CASE WHEN a.attended = 1 THEN s.id ELSE NULL END)::int as attendance,
+        COUNT(DISTINCT CASE WHEN pp.completed = 1 THEN s.id ELSE NULL END)::int as projects_completed,
+        COUNT(DISTINCT sh.id)::int as shares,
+        COUNT(DISTINCT r.id)::int as referrals,
+        ROUND(
+          COUNT(DISTINCT s.id) * 0.30 +
+          COUNT(DISTINCT CASE WHEN a.attended = 1 THEN s.id ELSE NULL END) * 0.25 +
+          COUNT(DISTINCT CASE WHEN pp.completed = 1 THEN s.id ELSE NULL END) * 0.25 +
+          COUNT(DISTINCT sh.id) * 0.10 +
+          COUNT(DISTINCT r.id) * 0.10
+        )::int as growth_score
+      FROM colleges c
+      LEFT JOIN students s ON s.college_id = c.id
+      LEFT JOIN attendance a ON a.student_id = s.id
+      LEFT JOIN project_progress pp ON pp.student_id = s.id
+      LEFT JOIN shares sh ON sh.student_id = s.id
+      LEFT JOIN referrals r ON r.referrer_student_id = s.id
+      GROUP BY c.id, c.name, c.city, c.demo_flag
+      ORDER BY growth_score DESC
+    `);
+    const ranked = result.rows.map((c, i) => ({ ...c, rank: i + 1 }));
+    res.json(ranked);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
-// GET /api/leaderboard/clubs
-router.get('/clubs', (req, res) => {
-  const clubs = db.prepare('SELECT cl.*, c.name as college_name FROM clubs cl JOIN colleges c ON cl.college_id = c.id').all();
-  const ranked = clubs.map(cl => {
-    const s = computeClubScore(cl.id);
-    return {
-      ...cl,
-      registrations: s.regs,
-      attendance: s.att,
-      projects_completed: s.comp,
-      shares: s.shares,
-      referrals: s.referrals,
-      growth_score: s.score
-    };
-  }).sort((a, b) => b.growth_score - a.growth_score)
-    .map((c, i) => ({ ...c, rank: i + 1 }));
-
-  res.json(ranked);
+// GET /api/leaderboard/clubs - single optimized query
+router.get('/clubs', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        cl.id, cl.name, cl.college_id, cl.demo_flag,
+        c.name as college_name,
+        COUNT(DISTINCT s.id)::int as registrations,
+        COUNT(DISTINCT CASE WHEN a.attended = 1 THEN s.id ELSE NULL END)::int as attendance,
+        COUNT(DISTINCT CASE WHEN pp.completed = 1 THEN s.id ELSE NULL END)::int as projects_completed,
+        COUNT(DISTINCT sh.id)::int as shares,
+        COUNT(DISTINCT r.id)::int as referrals,
+        ROUND(
+          COUNT(DISTINCT s.id) * 0.30 +
+          COUNT(DISTINCT CASE WHEN a.attended = 1 THEN s.id ELSE NULL END) * 0.25 +
+          COUNT(DISTINCT CASE WHEN pp.completed = 1 THEN s.id ELSE NULL END) * 0.25 +
+          COUNT(DISTINCT sh.id) * 0.10 +
+          COUNT(DISTINCT r.id) * 0.10
+        )::int as growth_score
+      FROM clubs cl
+      JOIN colleges c ON cl.college_id = c.id
+      LEFT JOIN students s ON s.club_id = cl.id
+      LEFT JOIN attendance a ON a.student_id = s.id
+      LEFT JOIN project_progress pp ON pp.student_id = s.id
+      LEFT JOIN shares sh ON sh.student_id = s.id
+      LEFT JOIN referrals r ON r.referrer_student_id = s.id
+      GROUP BY cl.id, cl.name, cl.college_id, cl.demo_flag, c.name
+      ORDER BY growth_score DESC
+    `);
+    const ranked = result.rows.map((c, i) => ({ ...c, rank: i + 1 }));
+    res.json(ranked);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 // GET /api/leaderboard/students
-router.get('/students', (req, res) => {
-  const students = db.prepare(`
-    SELECT s.id, s.name, s.referral_code,
-           c.name as college_name, cl.name as club_name,
-           pp.completed, pp.completion_time,
-           (SELECT COUNT(*) FROM referrals r WHERE r.referrer_student_id = s.id) as referral_count,
-           (SELECT COUNT(*) FROM project_votes pv WHERE pv.student_id = s.id) as votes,
-           (SELECT COUNT(*) FROM shares sh WHERE sh.student_id = s.id) as share_count
-    FROM students s
-    LEFT JOIN colleges c ON s.college_id = c.id
-    LEFT JOIN clubs cl ON s.club_id = cl.id
-    LEFT JOIN project_progress pp ON s.id = pp.student_id
-    WHERE pp.completed = 1
-    ORDER BY votes DESC, referral_count DESC
-    LIMIT 50
-  `).all();
-  res.json(students.map((s, i) => ({ ...s, rank: i + 1 })));
+router.get('/students', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT s.id, s.name, s.referral_code,
+             c.name as college_name, cl.name as club_name,
+             pp.completed, pp.completion_time,
+             (SELECT COUNT(*)::int FROM referrals r WHERE r.referrer_student_id = s.id) as referral_count,
+             (SELECT COUNT(*)::int FROM project_votes pv WHERE pv.student_id = s.id) as votes,
+             (SELECT COUNT(*)::int FROM shares sh WHERE sh.student_id = s.id) as share_count
+      FROM students s
+      LEFT JOIN colleges c ON s.college_id = c.id
+      LEFT JOIN clubs cl ON s.club_id = cl.id
+      LEFT JOIN project_progress pp ON s.id = pp.student_id
+      WHERE pp.completed = 1
+      ORDER BY votes DESC, referral_count DESC
+      LIMIT 50
+    `);
+    res.json(result.rows.map((s, i) => ({ ...s, rank: i + 1 })));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 // GET /api/leaderboard/squads
-router.get('/squads', (req, res) => {
-  const squads = db.prepare(`
-    SELECT sq.*, c.name as college_name,
-           (SELECT COUNT(*) FROM squad_members sm WHERE sm.squad_id = sq.id) as member_count
-    FROM squads sq
-    JOIN colleges c ON sq.college_id = c.id
-  `).all();
+router.get('/squads', async (req, res) => {
+  try {
+    const squads = (await pool.query(`
+      SELECT sq.*, c.name as college_name,
+             (SELECT COUNT(*)::int FROM squad_members sm WHERE sm.squad_id = sq.id) as member_count
+      FROM squads sq
+      JOIN colleges c ON sq.college_id = c.id
+    `)).rows;
 
-  const scored = squads.map(sq => {
-    const members = db.prepare('SELECT student_id FROM squad_members WHERE squad_id = ?').all(sq.id);
-    let totalRegs = 0, totalComp = 0, totalRefs = 0;
-    members.forEach(m => {
-      const prog = db.prepare('SELECT completed FROM project_progress WHERE student_id = ?').get(m.student_id);
-      if (prog && prog.completed) totalComp++;
-      totalRegs++;
-      const refs = db.prepare('SELECT COUNT(*) as c FROM referrals WHERE referrer_student_id = ?').get(m.student_id).c;
-      totalRefs += refs;
-    });
-    const score = Math.round(totalRegs * 30 + totalComp * 40 + totalRefs * 30);
-    return { ...sq, projects_completed: totalComp, referrals: totalRefs, growth_score: score };
-  }).sort((a, b) => b.growth_score - a.growth_score)
-    .map((s, i) => ({ ...s, rank: i + 1 }));
+    const scored = await Promise.all(squads.map(async sq => {
+      const members = (await pool.query('SELECT student_id FROM squad_members WHERE squad_id = $1', [sq.id])).rows;
+      let totalComp = 0, totalRefs = 0;
+      for (const m of members) {
+        const prog = (await pool.query('SELECT completed FROM project_progress WHERE student_id = $1', [m.student_id])).rows[0];
+        if (prog && prog.completed) totalComp++;
+        const refs = parseInt((await pool.query('SELECT COUNT(*)::int as c FROM referrals WHERE referrer_student_id = $1', [m.student_id])).rows[0].c);
+        totalRefs += refs;
+      }
+      const score = Math.round(members.length * 30 + totalComp * 40 + totalRefs * 30);
+      return { ...sq, projects_completed: totalComp, referrals: totalRefs, growth_score: score };
+    }));
 
-  res.json(scored);
+    const ranked = scored.sort((a, b) => b.growth_score - a.growth_score).map((s, i) => ({ ...s, rank: i + 1 }));
+    res.json(ranked);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 module.exports = router;
