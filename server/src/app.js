@@ -50,6 +50,16 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+app.get('/api/health-db', async (req, res) => {
+  try {
+    const pool = require('./db/database');
+    const result = await pool.query('SELECT NOW()');
+    res.json({ status: 'db_connected', time: result.rows[0], dbUrlSet: !!process.env.DATABASE_URL });
+  } catch (err) {
+    res.status(500).json({ error: err.message, stack: err.stack, dbUrlSet: !!process.env.DATABASE_URL });
+  }
+});
+
 // 404
 app.use((req, res) => {
   res.status(404).json({ error: 'Not found' });
@@ -58,7 +68,7 @@ app.use((req, res) => {
 // Error handler
 app.use((err, req, res, next) => {
   console.error(err.stack);
-  res.status(500).json({ error: 'Internal server error' });
+  res.status(500).json({ error: err.message, stack: err.stack, dbUrlSet: !!process.env.DATABASE_URL });
 });
 
 module.exports = app;
