@@ -33,7 +33,7 @@ router.get('/colleges', async (req, res) => {
     res.json(ranked);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: err.message, stack: err.stack, dbUrlSet: !!process.env.DATABASE_URL });
   }
 });
 
@@ -70,7 +70,7 @@ router.get('/clubs', async (req, res) => {
     res.json(ranked);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: err.message, stack: err.stack, dbUrlSet: !!process.env.DATABASE_URL });
   }
 });
 
@@ -95,7 +95,7 @@ router.get('/students', async (req, res) => {
     res.json(result.rows.map((s, i) => ({ ...s, rank: i + 1 })));
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: err.message, stack: err.stack, dbUrlSet: !!process.env.DATABASE_URL });
   }
 });
 
